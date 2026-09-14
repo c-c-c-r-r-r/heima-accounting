@@ -1,5 +1,5 @@
 // ==========================================
-// 黑马记账 - 「记一笔」输入弹窗
+// 黑马记账 - 「记一笔」输入弹窗（新增 / 修改共用）
 // ==========================================
 #pragma once
 
@@ -18,6 +18,9 @@ class AddExpenseDialog : public QDialog
     Q_OBJECT
 public:
     explicit AddExpenseDialog(QWidget *parent = nullptr);
+
+    // 预填已有账单（用于「修改账单」），标题会变成「修改账单」
+    void setExpense(const Expense &e);
 
     // 用户点「保存」后取出这笔账的数据
     Expense expense() const;
