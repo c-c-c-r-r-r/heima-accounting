@@ -5,11 +5,19 @@
     <name>AddExpenseDialog</name>
     <message>
         <source>💰 记一笔</source>
-        <translation>💰 Add Expense</translation>
+        <translation>💰 New Entry</translation>
     </message>
     <message>
         <source>✏️ 修改账单</source>
-        <translation>✏️ Edit Expense</translation>
+        <translation>✏️ Edit Entry</translation>
+    </message>
+    <message>
+        <source>💸 支出</source>
+        <translation>💸 Expense</translation>
+    </message>
+    <message>
+        <source>💰 收入</source>
+        <translation>💰 Income</translation>
     </message>
     <message>
         <source>选填，例如：和朋友聚餐</source>
@@ -68,7 +76,7 @@
     </message>
     <message>
         <source>＋ 记一笔</source>
-        <translation>＋ Add Expense</translation>
+        <translation>＋ New Entry</translation>
     </message>
     <message>
         <source>📊 统计</source>
@@ -111,6 +119,10 @@
         <translation>Date</translation>
     </message>
     <message>
+        <source>类型</source>
+        <translation>Type</translation>
+    </message>
+    <message>
         <source>分类</source>
         <translation>Category</translation>
     </message>
@@ -123,8 +135,16 @@
         <translation>Amount</translation>
     </message>
     <message>
+        <source>收入</source>
+        <translation>Income</translation>
+    </message>
+    <message>
+        <source>支出</source>
+        <translation>Expense</translation>
+    </message>
+    <message>
         <source>还没有账单记录 🐎\n点击左上角「＋ 记一笔」开始记账吧！</source>
-        <translation>No records yet 🐎\nClick "＋ Add Expense" to get started!</translation>
+        <translation>No records yet 🐎\nClick "＋ New Entry" to get started!</translation>
     </message>
     <message>
         <source>确认删除(%1)</source>
@@ -147,12 +167,24 @@
         <translation>Cancel</translation>
     </message>
     <message>
-        <source>筛选出 %1 笔，合计 %2</source>
-        <translation>%1 record(s) found, total %2</translation>
+        <source>共 %1 笔</source>
+        <translation>%1 record(s)</translation>
     </message>
     <message>
-        <source>共 %1 笔，总支出：%2</source>
-        <translation>%1 record(s), total: %2</translation>
+        <source>筛选出 %1 笔</source>
+        <translation>%1 found</translation>
+    </message>
+    <message>
+        <source>支出 %1</source>
+        <translation>Expense %1</translation>
+    </message>
+    <message>
+        <source>收入 %1</source>
+        <translation>Income %1</translation>
+    </message>
+    <message>
+        <source>结余 %1</source>
+        <translation>Balance %1</translation>
     </message>
 </context>
 <context>
@@ -181,12 +213,24 @@
         <translation>Date</translation>
     </message>
     <message>
+        <source>类型</source>
+        <translation>Type</translation>
+    </message>
+    <message>
         <source>分类</source>
         <translation>Category</translation>
     </message>
     <message>
         <source>金额</source>
         <translation>Amount</translation>
+    </message>
+    <message>
+        <source>收入</source>
+        <translation>Income</translation>
+    </message>
+    <message>
+        <source>支出</source>
+        <translation>Expense</translation>
     </message>
     <message>
         <source>♻️ 恢复所选</source>
@@ -259,8 +303,8 @@
 <context>
     <name>StatisticsDialog</name>
     <message>
-        <source>📊 支出统计</source>
-        <translation>📊 Spending Statistics</translation>
+        <source>📊 收支统计</source>
+        <translation>📊 Income &amp; Expense Statistics</translation>
     </message>
     <message>
         <source>今天</source>
@@ -295,8 +339,32 @@
         <translation>Period</translation>
     </message>
     <message>
-        <source>共 %1 笔</source>
-        <translation>%1 record(s)</translation>
+        <source>统计类型</source>
+        <translation>Type</translation>
+    </message>
+    <message>
+        <source>支出</source>
+        <translation>Expense</translation>
+    </message>
+    <message>
+        <source>收入</source>
+        <translation>Income</translation>
+    </message>
+    <message>
+        <source>总收入 %1</source>
+        <translation>Total Income %1</translation>
+    </message>
+    <message>
+        <source>总支出 %1</source>
+        <translation>Total Expense %1</translation>
+    </message>
+    <message>
+        <source>结余 %1</source>
+        <translation>Balance %1</translation>
+    </message>
+    <message>
+        <source>收入 %1 笔 · 支出 %2 笔</source>
+        <translation>%1 income record(s) · %2 expense record(s)</translation>
     </message>
     <message>
         <source>分类</source>
