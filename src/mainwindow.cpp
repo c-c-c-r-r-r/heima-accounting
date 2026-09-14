@@ -88,6 +88,13 @@ MainWindow::MainWindow(Database *db, QWidget *parent)
     auto *deleteShortcut = new QShortcut(QKeySequence(Qt::Key_Delete), this);
     connect(deleteShortcut, &QShortcut::activated, this, &MainWindow::onDeleteButton);
 
+    // 按 Esc 键：随时退出勾选模式（防误点后不知所措）
+    auto *escapeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    connect(escapeShortcut, &QShortcut::activated, this, [this]() {
+        if (m_deleteMode)
+            exitDeleteMode();
+    });
+
     // —— 搜索栏（第二行）——
     addToolBarBreak();
     QToolBar *searchBar = addToolBar(tr("搜索栏"));
@@ -318,10 +325,26 @@ void MainWindow::editRow(int row)
 
 void MainWindow::onDeleteButton()
 {
-    if (m_deleteMode)
-        confirmDelete();
-    else
+    if (m_deleteMode) {
+        // 已勾选 → 弹出确认；没勾选 → 再点一下就是退出勾选模式（防误点）
+        if (checkedCount() > 0)
+            confirmDelete();
+        else
+            exitDeleteMode();
+    } else {
         enterDeleteMode();
+    }
+}
+
+int MainWindow::checkedCount() const
+{
+    int checked = 0;
+    for (int r = 0; r < m_table->rowCount(); ++r) {
+        QTableWidgetItem *item = m_table->item(r, 0);
+        if (item && item->checkState() == Qt::Checked)
+            ++checked;
+    }
+    return checked;
 }
 
 void MainWindow::enterDeleteMode()
@@ -333,7 +356,7 @@ void MainWindow::enterDeleteMode()
     m_table->setColumnHidden(0, false); // 显示勾选列
 
     m_deleteButton->setText(tr("确认删除(0)"));
-    m_deleteButton->setEnabled(false); // 勾选后才能确认
+    // 注意：保持按钮可用——没勾选时再点一下就是退出勾选模式
     m_cancelDeleteButton->setVisible(true);
 
     // 删除模式下禁用其他操作，避免误点
@@ -356,6 +379,7 @@ void MainWindow::exitDeleteMode()
     m_editButton->setEnabled(true);
 
     applyTheme(); // 恢复删除按钮的可用状态样式
+    refresh();    // 重新加载列表（顺便清掉勾选状态）
 }
 
 void MainWindow::confirmDelete()
@@ -383,14 +407,12 @@ void MainWindow::confirmDelete()
     for (qint64 id : ids)
         m_db->deleteExpense(id);
 
-    exitDeleteMode();
-    refresh();
+    exitDeleteMode(); // 里面会刷新列表
 }
 
 void MainWindow::onCancelDelete()
 {
-    exitDeleteMode();
-    refresh(); // 顺便把勾选状态清掉
+    exitDeleteMode(); // 里面会刷新列表并清掉勾选
 }
 
 void MainWindow::onItemChanged(QTableWidgetItem *item)
@@ -398,15 +420,8 @@ void MainWindow::onItemChanged(QTableWidgetItem *item)
     if (m_updating || !m_deleteMode || item->column() != 0)
         return;
 
-    // 统计勾选数量，更新确认按钮
-    int checked = 0;
-    for (int r = 0; r < m_table->rowCount(); ++r) {
-        QTableWidgetItem *checkItem = m_table->item(r, 0);
-        if (checkItem && checkItem->checkState() == Qt::Checked)
-            ++checked;
-    }
-    m_deleteButton->setText(tr("确认删除(%1)").arg(checked));
-    m_deleteButton->setEnabled(checked > 0);
+    // 统计勾选数量，更新确认按钮文字
+    m_deleteButton->setText(tr("确认删除(%1)").arg(checkedCount()));
 }
 
 void MainWindow::refresh()

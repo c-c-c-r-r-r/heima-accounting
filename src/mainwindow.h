@@ -39,6 +39,7 @@ private:
     void applyTheme();       // 把当前主题颜色应用到主窗口各控件
     QString dateFormat() const; // 当前日期显示格式（设置页可改）
     void editRow(int row);   // 打开修改弹窗（预填第 row 行账单）
+    int checkedCount() const; // 当前勾选的账单数量
     void enterDeleteMode();  // 进入勾选删除模式
     void exitDeleteMode();   // 退出勾选删除模式
     void confirmDelete();    // 确认删除勾选的账单
