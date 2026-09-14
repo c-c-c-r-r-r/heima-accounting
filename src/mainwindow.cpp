@@ -4,12 +4,17 @@
 #include "mainwindow.h"
 #include "addexpensedialog.h"
 #include "categories.h"
+#include "statisticsdialog.h"
 
 #include <QColor>
 #include <QHeaderView>
+#include <QKeySequence>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QShortcut>
+#include <QSizePolicy>
 #include <QStatusBar>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -25,6 +30,15 @@ QString formatAmount(qint64 cents)
         .arg(cents % 100, 2, 10, QLatin1Char('0'));
 }
 
+// 橙色主按钮样式
+const char *kPrimaryButtonStyle =
+    "QPushButton {"
+    "  background-color: #ff7a1a; color: white; font-size: 17pt;"
+    "  font-weight: bold; padding: 10px 36px; border: none; border-radius: 8px;"
+    "}"
+    "QPushButton:hover { background-color: #ff8f3d; }"
+    "QPushButton:pressed { background-color: #e56a10; }";
+
 } // namespace
 
 MainWindow::MainWindow(Database *db, QWidget *parent)
@@ -37,29 +51,51 @@ MainWindow::MainWindow(Database *db, QWidget *parent)
     // 整体暖色主题
     setStyleSheet(QStringLiteral("QMainWindow { background: #fffdf9; }"));
 
-    // 顶部工具栏：显眼的「记一笔」大按钮
+    // 顶部工具栏
     QToolBar *toolbar = addToolBar(QStringLiteral("主工具栏"));
     toolbar->setMovable(false);
     toolbar->setStyleSheet(QStringLiteral(
         "QToolBar { background: #fff7ef; padding: 10px;"
         "            border-bottom: 1px solid #ffe3c2; }"));
 
+    // 「记一笔」大按钮
     auto *addButton = new QPushButton(QStringLiteral("＋ 记一笔"), this);
-    addButton->setStyleSheet(QStringLiteral(
-        "QPushButton {"
-        "  background-color: #ff7a1a;"   // 醒目橙色
-        "  color: white;"                // 白色文字
-        "  font-size: 17pt;"             // 大号字体
-        "  font-weight: bold;"           // 加粗
-        "  padding: 10px 36px;"          // 加大按钮面积
-        "  border: none;"
-        "  border-radius: 8px;"          // 圆角
-        "}"
-        "QPushButton:hover { background-color: #ff8f3d; }"     // 鼠标悬停变亮
-        "QPushButton:pressed { background-color: #e56a10; }")); // 按下变深
-    addButton->setCursor(Qt::PointingHandCursor); // 鼠标移上去变成小手
+    addButton->setStyleSheet(QString::fromUtf8(kPrimaryButtonStyle));
+    addButton->setCursor(Qt::PointingHandCursor);
     toolbar->addWidget(addButton);
     connect(addButton, &QPushButton::clicked, this, &MainWindow::onAddExpense);
+
+    // 「统计」按钮（橙色描边样式）
+    auto *statsButton = new QPushButton(QStringLiteral("📊 统计"), this);
+    statsButton->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #ffffff; color: #ff7a1a; font-size: 14pt;"
+        "               font-weight: bold; padding: 9px 28px;"
+        "               border: 2px solid #ff7a1a; border-radius: 8px; }"
+        "QPushButton:hover { background: #fff3e4; }"
+        "QPushButton:pressed { background: #ffe3c2; }"));
+    statsButton->setCursor(Qt::PointingHandCursor);
+    toolbar->addWidget(statsButton);
+    connect(statsButton, &QPushButton::clicked, this, &MainWindow::onShowStats);
+
+    // 弹性空隙，把删除按钮推到最右侧
+    auto *spacer = new QWidget(this);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    toolbar->addWidget(spacer);
+
+    // 「删除所选」按钮（选中账单后才能用）
+    m_deleteButton = new QPushButton(QStringLiteral("🗑️ 删除所选"), this);
+    m_deleteButton->setEnabled(false);
+    m_deleteButton->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #ffffff; color: #c9c2b8; font-size: 14pt;"
+        "               padding: 9px 28px; border: 1px solid #e2d8c9; border-radius: 8px; }"
+        "QPushButton:enabled { color: #c0392b; border-color: #e6b3ae; background: #fffaf8; }"
+        "QPushButton:enabled:hover { background: #fdece9; }"));
+    toolbar->addWidget(m_deleteButton);
+    connect(m_deleteButton, &QPushButton::clicked, this, &MainWindow::onDeleteSelected);
+
+    // 按键盘 Delete 键也可以删除所选
+    auto *deleteShortcut = new QShortcut(QKeySequence(Qt::Key_Delete), this);
+    connect(deleteShortcut, &QShortcut::activated, this, &MainWindow::onDeleteSelected);
 
     // 中部账单列表（4 列：日期 / 分类 / 备注 / 金额）
     m_table = new QTableWidget(this);
@@ -91,6 +127,11 @@ MainWindow::MainWindow(Database *db, QWidget *parent)
     m_table->setColumnWidth(1, 190); // 分类
     m_table->setColumnWidth(2, 350); // 备注
     setCentralWidget(m_table);
+
+    // 选中行变化时更新「删除所选」按钮状态
+    connect(m_table, &QTableWidget::itemSelectionChanged, this, [this]() {
+        m_deleteButton->setEnabled(m_table->currentRow() >= 0);
+    });
 
     // 没有账单时的提示文字（覆盖在列表上方）
     m_emptyLabel = new QLabel(
@@ -129,6 +170,39 @@ void MainWindow::onAddExpense()
     }
 }
 
+void MainWindow::onShowStats()
+{
+    // 打开支出统计页面
+    StatisticsDialog dialog(m_db, this);
+    dialog.exec();
+}
+
+void MainWindow::onDeleteSelected()
+{
+    const int row = m_table->currentRow();
+    if (row < 0)
+        return;
+
+    // 第一列的 UserRole 里存了这笔账的编号
+    const qint64 id = m_table->item(row, 0)->data(Qt::UserRole).toLongLong();
+    const QString date = m_table->item(row, 0)->text();
+    const QString cat = m_table->item(row, 1)->text();
+    const QString amount = m_table->item(row, 3)->text();
+
+    // 删除前先确认，防止误删
+    QMessageBox box(QMessageBox::Question, QStringLiteral("删除账单"),
+                    QStringLiteral("确定要删除这笔账吗？\n\n%1\n%2\n%3").arg(date, cat, amount),
+                    QMessageBox::NoButton, this);
+    QPushButton *deleteButton = box.addButton(QStringLiteral("删除"), QMessageBox::DestructiveRole);
+    box.addButton(QStringLiteral("取消"), QMessageBox::RejectRole);
+    box.exec();
+
+    if (box.clickedButton() == deleteButton) {
+        if (m_db->deleteExpense(id))
+            refresh();
+    }
+}
+
 void MainWindow::refresh()
 {
     const QList<Expense> list = m_db->allExpenses();
@@ -144,6 +218,7 @@ void MainWindow::refresh()
             + QStringLiteral(" / ") + e.subcategory;
 
         auto *dateItem = new QTableWidgetItem(e.date);
+        dateItem->setData(Qt::UserRole, e.id); // 在行里记住这笔账的编号，删除时用
         auto *catItem = new QTableWidgetItem(catText);
         auto *noteItem = new QTableWidgetItem(e.note);
         auto *amountItem = new QTableWidgetItem(formatAmount(e.amountCents));
