@@ -23,6 +23,8 @@ qt_add_executable(heima_accounting WIN32 MACOSX_BUNDLE
     src/categories.h
     src/database.cpp
     src/database.h
+    src/statisticsdialog.cpp
+    src/statisticsdialog.h
 )
 
 # 链接 Qt6 的界面库和数据库库
