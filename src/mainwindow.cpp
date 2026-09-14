@@ -28,12 +28,23 @@
 
 namespace {
 
+// 收入固定用绿色（与支出颜色区分）
+const QColor kIncomeColor = QColor(QStringLiteral("#16a34a"));
+
 // 金额格式化：分 → "¥ 12.34"（金额格式不参与翻译）
 QString formatAmount(qint64 cents)
 {
     return QStringLiteral("¥ %1.%2")
         .arg(cents / 100)
         .arg(cents % 100, 2, 10, QLatin1Char('0'));
+}
+
+// 带正负号的金额（负数显示为 -¥ 12.34）
+QString formatAmountSigned(qint64 cents)
+{
+    if (cents < 0)
+        return QStringLiteral("-") + formatAmount(-cents);
+    return formatAmount(cents);
 }
 
 } // namespace
@@ -43,7 +54,7 @@ MainWindow::MainWindow(Database *db, QWidget *parent)
     , m_db(db)
 {
     setWindowTitle(tr("黑马记账"));
-    resize(1000, 660);
+    resize(1040, 660);
 
     // —— 顶部工具栏（第一行）——
     QToolBar *toolbar = addToolBar(tr("主工具栏"));
@@ -109,7 +120,10 @@ MainWindow::MainWindow(Database *db, QWidget *parent)
 
     m_categoryFilter = new QComboBox(this);
     m_categoryFilter->addItem(tr("全部分类"), QString());
-    for (const auto &entry : Categories::topCategories())
+    for (const auto &entry : Categories::topCategories(1)) // 支出大类
+        m_categoryFilter->addItem(entry.emoji + QStringLiteral(" ") + entry.name, entry.name);
+    m_categoryFilter->insertSeparator(m_categoryFilter->count());
+    for (const auto &entry : Categories::topCategories(2)) // 收入大类
         m_categoryFilter->addItem(entry.emoji + QStringLiteral(" ") + entry.name, entry.name);
     searchBar->addWidget(m_categoryFilter);
     connect(m_categoryFilter, &QComboBox::currentIndexChanged, this, &MainWindow::refresh);
@@ -123,12 +137,13 @@ MainWindow::MainWindow(Database *db, QWidget *parent)
 
     // —— 中部账单列表 ——
     m_table = new QTableWidget(this);
-    m_table->setColumnCount(5); // 第 0 列勾选（平时隐藏），1~4 日期/分类/备注/金额
+    m_table->setColumnCount(6); // 0 勾选（平时隐藏），1 日期，2 类型，3 分类，4 备注，5 金额
     m_table->setHorizontalHeaderItem(0, new QTableWidgetItem(tr("选择")));
     m_table->setHorizontalHeaderItem(1, new QTableWidgetItem(tr("日期")));
-    m_table->setHorizontalHeaderItem(2, new QTableWidgetItem(tr("分类")));
-    m_table->setHorizontalHeaderItem(3, new QTableWidgetItem(tr("备注")));
-    m_table->setHorizontalHeaderItem(4, new QTableWidgetItem(tr("金额")));
+    m_table->setHorizontalHeaderItem(2, new QTableWidgetItem(tr("类型")));
+    m_table->setHorizontalHeaderItem(3, new QTableWidgetItem(tr("分类")));
+    m_table->setHorizontalHeaderItem(4, new QTableWidgetItem(tr("备注")));
+    m_table->setHorizontalHeaderItem(5, new QTableWidgetItem(tr("金额")));
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->verticalHeader()->setVisible(false);
@@ -138,8 +153,9 @@ MainWindow::MainWindow(Database *db, QWidget *parent)
     m_table->setColumnHidden(0, true); // 勾选列平时隐藏
     m_table->setColumnWidth(0, 70);
     m_table->setColumnWidth(1, 120); // 日期
-    m_table->setColumnWidth(2, 190); // 分类
-    m_table->setColumnWidth(3, 350); // 备注
+    m_table->setColumnWidth(2, 80);  // 类型
+    m_table->setColumnWidth(3, 190); // 分类
+    m_table->setColumnWidth(4, 330); // 备注
     setCentralWidget(m_table);
 
     connect(m_table, &QTableWidget::itemChanged, this, &MainWindow::onItemChanged);
@@ -159,9 +175,15 @@ MainWindow::MainWindow(Database *db, QWidget *parent)
     m_emptyLabel->setAlignment(Qt::AlignCenter);
     m_emptyLabel->setStyleSheet(QStringLiteral("color: #c9b8a3; font-size: 15pt;"));
 
-    // —— 底部汇总栏 ——
-    m_totalLabel = new QLabel(this);
-    statusBar()->addPermanentWidget(m_totalLabel);
+    // —— 底部状态栏：笔数 / 支出 / 收入 / 结余 ——
+    m_countLabel = new QLabel(this);
+    m_expenseLabel = new QLabel(this);
+    m_incomeLabel = new QLabel(this);
+    m_balanceLabel = new QLabel(this);
+    statusBar()->addPermanentWidget(m_countLabel);
+    statusBar()->addPermanentWidget(m_expenseLabel);
+    statusBar()->addPermanentWidget(m_incomeLabel);
+    statusBar()->addPermanentWidget(m_balanceLabel);
 
     // 应用主题 + 首次加载数据
     applyTheme();
@@ -176,6 +198,7 @@ void MainWindow::applyTheme()
     const QString lb = Theme::lightBg().name();
     const QString bd = Theme::border().name();
     const QString amt = Theme::amountText().name();
+    const QString income = kIncomeColor.name();
 
     setStyleSheet(QStringLiteral("QMainWindow { background: #fffdf9; }"));
 
@@ -259,9 +282,13 @@ void MainWindow::applyTheme()
         "}")
         .arg(lb, bd));
 
-    // 底部汇总
-    m_totalLabel->setStyleSheet(QStringLiteral(
-        "color: %1; font-size: 12pt; font-weight: bold; padding: 4px 12px;").arg(amt));
+    // 底部汇总标签
+    const QString labelStyle = QStringLiteral(
+        "font-size: 12pt; font-weight: bold; padding: 4px 12px;");
+    m_countLabel->setStyleSheet(QStringLiteral("color: #8a7a66; %1").arg(labelStyle));
+    m_expenseLabel->setStyleSheet(QStringLiteral("color: %1; %2").arg(amt, labelStyle));
+    m_incomeLabel->setStyleSheet(QStringLiteral("color: %1; %2").arg(income, labelStyle));
+    m_balanceLabel->setStyleSheet(labelStyle); // 颜色按正负动态设置
     statusBar()->setStyleSheet(QStringLiteral(
         "QStatusBar { background: %1; border-top: 1px solid %2; }").arg(lb, bd));
 }
@@ -314,7 +341,7 @@ void MainWindow::editRow(int row)
 {
     const Expense &e = m_currentList[row];
 
-    // 打开弹窗并预填这笔账
+    // 打开弹窗并预填这条记录
     AddExpenseDialog dialog(this);
     dialog.setExpense(e);
     if (dialog.exec() == QDialog::Accepted) {
@@ -432,7 +459,7 @@ void MainWindow::refresh()
 
     QList<Expense> list;
     for (const Expense &e : m_db->allExpenses()) {
-        // 分类筛选
+        // 分类筛选（收支分类名称互不重复，直接按名称过滤）
         if (!filterCat.isEmpty() && e.category != filterCat)
             continue;
         // 关键词搜索：金额 / 日期 / 分类 / 备注
@@ -456,6 +483,7 @@ void MainWindow::refresh()
     m_table->setRowCount(list.size());
     for (int i = 0; i < list.size(); ++i) {
         const Expense &e = list[i];
+        const bool isIncome = (e.type == 2);
 
         // 勾选列（删除模式用）
         auto *checkItem = new QTableWidgetItem();
@@ -468,27 +496,36 @@ void MainWindow::refresh()
         auto *dateItem = new QTableWidgetItem(dateText);
         dateItem->setData(Qt::UserRole, e.id);
 
+        // 类型列：收入绿色 / 支出主题色
+        auto *typeItem = new QTableWidgetItem(isIncome ? tr("收入") : tr("支出"));
+        typeItem->setForeground(isIncome ? kIncomeColor : Theme::amountText());
+        QFont typeFont = typeItem->font();
+        typeFont.setBold(true);
+        typeItem->setFont(typeFont);
+
         // 分类列带图标：如 "🍜 餐饮饮食 / 午餐"
-        const QString catText = Categories::emojiForTop(e.category)
+        const QString catText = Categories::emojiForTop(e.category, e.type)
             + QStringLiteral(" ") + e.category
             + QStringLiteral(" / ") + e.subcategory;
-
         auto *catItem = new QTableWidgetItem(catText);
-        auto *noteItem = new QTableWidgetItem(e.note);
-        auto *amountItem = new QTableWidgetItem(formatAmount(e.amountCents));
 
-        // 金额加粗并显示为主题色
+        auto *noteItem = new QTableWidgetItem(e.note);
+
+        // 金额列：收入 "＋ ¥x" 绿色，支出 "－ ¥x" 主题色
+        auto *amountItem = new QTableWidgetItem(
+            (isIncome ? QStringLiteral("＋ ") : QStringLiteral("－ ")) + formatAmount(e.amountCents));
         amountItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        amountItem->setForeground(Theme::amountText());
+        amountItem->setForeground(isIncome ? kIncomeColor : Theme::amountText());
         QFont amountFont = amountItem->font();
         amountFont.setBold(true);
         amountItem->setFont(amountFont);
 
         m_table->setItem(i, 0, checkItem);
         m_table->setItem(i, 1, dateItem);
-        m_table->setItem(i, 2, catItem);
-        m_table->setItem(i, 3, noteItem);
-        m_table->setItem(i, 4, amountItem);
+        m_table->setItem(i, 2, typeItem);
+        m_table->setItem(i, 3, catItem);
+        m_table->setItem(i, 4, noteItem);
+        m_table->setItem(i, 5, amountItem);
     }
     m_updating = false;
 
@@ -500,14 +537,31 @@ void MainWindow::refresh()
 
     // —— 底部汇总（有筛选时显示筛选结果）——
     const bool filtering = !kw.isEmpty() || !filterCat.isEmpty();
-    if (filtering) {
-        qint64 sum = 0;
-        for (const Expense &e : list)
-            sum += e.amountCents;
-        m_totalLabel->setText(tr("筛选出 %1 笔，合计 %2").arg(list.size()).arg(formatAmount(sum)));
-    } else {
-        m_totalLabel->setText(tr("共 %1 笔，总支出：%2")
-                                  .arg(list.size())
-                                  .arg(formatAmount(m_db->totalCents())));
+    qint64 expenseSum = 0;
+    qint64 incomeSum = 0;
+    for (const Expense &e : list) {
+        if (e.type == 2)
+            incomeSum += e.amountCents;
+        else
+            expenseSum += e.amountCents;
     }
+
+    if (filtering) {
+        m_countLabel->setText(tr("筛选出 %1 笔").arg(list.size()));
+        m_expenseLabel->setText(tr("支出 %1").arg(formatAmount(expenseSum)));
+        m_incomeLabel->setText(tr("收入 %1").arg(formatAmount(incomeSum)));
+        m_balanceLabel->setText(tr("结余 %1").arg(formatAmountSigned(incomeSum - expenseSum)));
+    } else {
+        m_countLabel->setText(tr("共 %1 笔").arg(list.size()));
+        m_expenseLabel->setText(tr("支出 %1").arg(formatAmount(m_db->totalCents(1))));
+        m_incomeLabel->setText(tr("收入 %1").arg(formatAmount(m_db->totalCents(2))));
+        m_balanceLabel->setText(tr("结余 %1").arg(
+            formatAmountSigned(m_db->totalCents(2) - m_db->totalCents(1))));
+    }
+
+    // 结余颜色：为正绿色，为负红色
+    const qint64 balance = incomeSum - expenseSum;
+    m_balanceLabel->setStyleSheet(QStringLiteral(
+        "color: %1; font-size: 12pt; font-weight: bold; padding: 4px 12px;")
+        .arg(balance >= 0 ? kIncomeColor.name() : QStringLiteral("#c0392b")));
 }

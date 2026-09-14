@@ -1,5 +1,5 @@
 // ==========================================
-// 黑马记账 - 支出统计页面
+// 黑马记账 - 收支统计页面
 // ==========================================
 #pragma once
 
@@ -14,7 +14,7 @@ class QWidget;
 
 #include "database.h"
 
-// 统计弹窗：今天 / 本周 / 本月 / 今年 / 自定义时间段的总支出、饼图与分类明细
+// 统计弹窗：时间段内总收入 / 总支出 / 结余 + 饼图 + 分类明细（收支可切换）
 class StatisticsDialog : public QDialog
 {
     Q_OBJECT
@@ -31,10 +31,13 @@ private:
 
     Database *m_db;
     QComboBox *m_preset;       // 时间范围预设
+    QComboBox *m_typeFilter;   // 统计类型：支出 / 收入
     QWidget *m_customRange;    // 自定义日期选择区（含 从/到 两个日期框）
     QDateEdit *m_fromDate;
     QDateEdit *m_toDate;
-    QLabel *m_totalLabel;      // 总支出大字
+    QLabel *m_incomeLabel;     // 总收入大字（绿色）
+    QLabel *m_expenseLabel;    // 总支出大字（主题色）
+    QLabel *m_balanceLabel;    // 结余大字（正绿负红）
     QLabel *m_countLabel;      // 笔数
     QChartView *m_chartView;   // 分类占比饼图
     QTableWidget *m_categoryTable; // 各一级大类明细（分类 / 金额 / 占比）

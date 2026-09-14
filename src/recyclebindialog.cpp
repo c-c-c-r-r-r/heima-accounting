@@ -5,6 +5,7 @@
 #include "categories.h"
 #include "theme.h"
 
+#include <QColor>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -15,6 +16,9 @@
 #include <QVBoxLayout>
 
 namespace {
+
+// 收入固定用绿色（与支出颜色区分）
+const QColor kIncomeColor = QColor(QStringLiteral("#16a34a"));
 
 // 金额格式化：分 → "¥ 12.34"
 QString formatAmount(qint64 cents)
@@ -51,10 +55,11 @@ RecycleBinDialog::RecycleBinDialog(Database *db, QWidget *parent)
     m_emptyLabel->setAlignment(Qt::AlignCenter);
     m_emptyLabel->setStyleSheet(QStringLiteral("color: #c9b8a3; font-size: 14pt;"));
 
-    // 列表：日期 / 分类 / 金额
+    // 列表：日期 / 类型 / 分类 / 金额
     m_table = new QTableWidget(this);
-    m_table->setColumnCount(3);
-    m_table->setHorizontalHeaderLabels({tr("日期"), tr("分类"), tr("金额")});
+    m_table->setColumnCount(4);
+    m_table->setHorizontalHeaderLabels(
+        {tr("日期"), tr("类型"), tr("分类"), tr("金额")});
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->verticalHeader()->setVisible(false);
@@ -62,7 +67,8 @@ RecycleBinDialog::RecycleBinDialog(Database *db, QWidget *parent)
     m_table->setAlternatingRowColors(true);
     m_table->verticalHeader()->setDefaultSectionSize(42);
     m_table->setColumnWidth(0, 120);
-    m_table->setColumnWidth(1, 220);
+    m_table->setColumnWidth(1, 80);
+    m_table->setColumnWidth(2, 220);
     m_table->setStyleSheet(QStringLiteral(
         "QTableWidget { font-size: 11pt; background: #ffffff;"
         "                alternate-background-color: %1; border: none; }"
@@ -157,19 +163,29 @@ void RecycleBinDialog::refresh()
     m_table->setRowCount(m_list.size());
     for (int i = 0; i < m_list.size(); ++i) {
         const Expense &e = m_list[i];
+        const bool isIncome = (e.type == 2);
 
         auto *dateItem = new QTableWidgetItem(e.date);
         dateItem->setData(Qt::UserRole, e.id);
+
+        // 类型：收入绿色 / 支出主题色
+        auto *typeItem = new QTableWidgetItem(isIncome ? tr("收入") : tr("支出"));
+        typeItem->setForeground(isIncome ? kIncomeColor : Theme::amountText());
+
         auto *catItem = new QTableWidgetItem(
-            Categories::emojiForTop(e.category) + QStringLiteral(" ") + e.category
+            Categories::emojiForTop(e.category, e.type) + QStringLiteral(" ") + e.category
             + QStringLiteral(" / ") + e.subcategory);
-        auto *amountItem = new QTableWidgetItem(formatAmount(e.amountCents));
+
+        // 金额：收入 "＋ ¥x" 绿色，支出 "－ ¥x" 主题色
+        auto *amountItem = new QTableWidgetItem(
+            (isIncome ? QStringLiteral("＋ ") : QStringLiteral("－ ")) + formatAmount(e.amountCents));
         amountItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        amountItem->setForeground(Theme::amountText());
+        amountItem->setForeground(isIncome ? kIncomeColor : Theme::amountText());
 
         m_table->setItem(i, 0, dateItem);
-        m_table->setItem(i, 1, catItem);
-        m_table->setItem(i, 2, amountItem);
+        m_table->setItem(i, 1, typeItem);
+        m_table->setItem(i, 2, catItem);
+        m_table->setItem(i, 3, amountItem);
     }
 
     // 空状态

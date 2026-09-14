@@ -15,7 +15,7 @@ class QTableWidgetItem;
 
 #include "database.h"
 
-// 主窗口：工具栏（记一笔/统计/设置/修改/删除）+ 搜索栏 + 账单列表 + 底部汇总
+// 主窗口：工具栏（记一笔/统计/设置/修改/删除）+ 搜索栏 + 账单列表 + 底部收支汇总
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -45,9 +45,14 @@ private:
     void confirmDelete();    // 确认删除勾选的账单
 
     Database *m_db;
-    QTableWidget *m_table;       // 账单列表（第 0 列是勾选框，平时隐藏）
-    QLabel *m_totalLabel;        // 底部总支出文字
-    QLabel *m_emptyLabel;        // 没有账单时的提示文字
+    QTableWidget *m_table;   // 账单列表（第 0 列是勾选框，平时隐藏）
+    QLabel *m_emptyLabel;    // 没有账单时的提示文字
+
+    // 底部状态栏汇总
+    QLabel *m_countLabel;    // 共 N 笔
+    QLabel *m_expenseLabel;  // 支出
+    QLabel *m_incomeLabel;   // 收入
+    QLabel *m_balanceLabel;  // 结余
 
     // 工具栏控件
     QPushButton *m_addButton;
@@ -59,7 +64,7 @@ private:
 
     // 搜索栏
     QLineEdit *m_searchEdit;     // 关键词搜索（金额/日期/分类/备注）
-    QComboBox *m_categoryFilter; // 分类筛选（全部 + 10 大类）
+    QComboBox *m_categoryFilter; // 分类筛选（全部 + 支出/收入大类）
     QPushButton *m_clearButton;  // 清空搜索
 
     // 状态
