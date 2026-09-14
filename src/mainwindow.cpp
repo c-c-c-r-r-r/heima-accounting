@@ -4,9 +4,9 @@
 #include "mainwindow.h"
 #include "addexpensedialog.h"
 
-#include <QAction>
 #include <QHeaderView>
 #include <QLabel>
+#include <QPushButton>
 #include <QStatusBar>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -31,11 +31,27 @@ MainWindow::MainWindow(Database *db, QWidget *parent)
     setWindowTitle(QStringLiteral("黑马记账"));
     resize(900, 600);
 
-    // 顶部工具栏：「记一笔」按钮
+    // 顶部工具栏：显眼的「记一笔」大按钮
     QToolBar *toolbar = addToolBar(QStringLiteral("主工具栏"));
     toolbar->setMovable(false);
-    QAction *addAction = toolbar->addAction(QStringLiteral("＋ 记一笔"));
-    connect(addAction, &QAction::triggered, this, &MainWindow::onAddExpense);
+    toolbar->setStyleSheet(QStringLiteral("QToolBar { padding: 8px; }"));
+
+    auto *addButton = new QPushButton(QStringLiteral("＋ 记一笔"), this);
+    addButton->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background-color: #ff7a1a;"   // 醒目橙色
+        "  color: white;"                // 白色文字
+        "  font-size: 17pt;"             // 大号字体
+        "  font-weight: bold;"           // 加粗
+        "  padding: 10px 36px;"          // 加大按钮面积
+        "  border: none;"
+        "  border-radius: 8px;"          // 圆角
+        "}"
+        "QPushButton:hover { background-color: #ff8f3d; }"     // 鼠标悬停变亮
+        "QPushButton:pressed { background-color: #e56a10; }")); // 按下变深
+    addButton->setCursor(Qt::PointingHandCursor); // 鼠标移上去变成小手
+    toolbar->addWidget(addButton);
+    connect(addButton, &QPushButton::clicked, this, &MainWindow::onAddExpense);
 
     // 中部账单列表（4 列：日期 / 分类 / 备注 / 金额）
     m_table = new QTableWidget(this);
