@@ -86,4 +86,4 @@ Windows：`C:\Users\<用户名>\AppData\Roaming\黑马\黑马记账\heima_accoun
 
 ## 🙏 致谢
 
-本项目由一位零编程基础的创作者在 **Claude Code** 的辅助下完成——从产品设计、技术选型到全部代码，均由 AI 协助实现。
+本项目由一位创作者在 **Claude Code** 的辅助下完成——从产品设计、技术选型到全部代码，均由 AI 协助实现。
