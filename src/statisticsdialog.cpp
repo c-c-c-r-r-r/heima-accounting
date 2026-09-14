@@ -3,6 +3,7 @@
 // ==========================================
 #include "statisticsdialog.h"
 #include "categories.h"
+#include "theme.h"
 
 #include <QColor>
 #include <QComboBox>
@@ -11,9 +12,16 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMargins>
+#include <QPainter>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
+
+#include <QtCharts/QChart>
+#include <QtCharts/QChartView>
+#include <QtCharts/QPieSeries>
+#include <QtCharts/QPieSlice>
 
 namespace {
 
@@ -25,14 +33,23 @@ QString formatAmount(qint64 cents)
         .arg(cents % 100, 2, 10, QLatin1Char('0'));
 }
 
+// 饼图配色（固定一组柔和的颜色，循环使用）
+const QList<QColor> kSliceColors = {
+    QColor(QStringLiteral("#ff9f43")), QColor(QStringLiteral("#54a0ff")),
+    QColor(QStringLiteral("#5f27cd")), QColor(QStringLiteral("#1dd1a1")),
+    QColor(QStringLiteral("#ff6b6b")), QColor(QStringLiteral("#feca57")),
+    QColor(QStringLiteral("#48dbfb")), QColor(QStringLiteral("#ff9ff3")),
+    QColor(QStringLiteral("#10ac84")), QColor(QStringLiteral("#a29bfe")),
+};
+
 } // namespace
 
 StatisticsDialog::StatisticsDialog(Database *db, QWidget *parent)
     : QDialog(parent)
     , m_db(db)
 {
-    setWindowTitle(QStringLiteral("📊 支出统计"));
-    setMinimumWidth(540);
+    setWindowTitle(tr("📊 支出统计"));
+    setMinimumWidth(560);
     setStyleSheet(QStringLiteral(
         "QDialog { background: #fffdf9; }"
         "QLabel { font-size: 12pt; }"
@@ -42,11 +59,7 @@ StatisticsDialog::StatisticsDialog(Database *db, QWidget *parent)
 
     // 时间范围预设
     m_preset = new QComboBox(this);
-    m_preset->addItems({QStringLiteral("今天"),
-                        QStringLiteral("本周"),
-                        QStringLiteral("本月"),
-                        QStringLiteral("今年"),
-                        QStringLiteral("自定义")});
+    m_preset->addItems({tr("今天"), tr("本周"), tr("本月"), tr("今年"), tr("自定义")});
 
     // 自定义日期范围（默认隐藏，选「自定义」才显示）
     m_fromDate = new QDateEdit(QDate::currentDate(), this);
@@ -58,9 +71,9 @@ StatisticsDialog::StatisticsDialog(Database *db, QWidget *parent)
     m_customRange = new QWidget(this);
     auto *rangeLayout = new QHBoxLayout(m_customRange);
     rangeLayout->setContentsMargins(0, 0, 0, 0);
-    rangeLayout->addWidget(new QLabel(QStringLiteral("从"), m_customRange));
+    rangeLayout->addWidget(new QLabel(tr("从"), m_customRange));
     rangeLayout->addWidget(m_fromDate);
-    rangeLayout->addWidget(new QLabel(QStringLiteral("到"), m_customRange));
+    rangeLayout->addWidget(new QLabel(tr("到"), m_customRange));
     rangeLayout->addWidget(m_toDate);
     rangeLayout->addStretch();
     m_customRange->setVisible(false);
@@ -69,18 +82,29 @@ StatisticsDialog::StatisticsDialog(Database *db, QWidget *parent)
     m_totalLabel = new QLabel(this);
     m_totalLabel->setAlignment(Qt::AlignCenter);
     m_totalLabel->setStyleSheet(QStringLiteral(
-        "color: #e56a10; font-size: 26pt; font-weight: bold; padding: 12px;"));
+        "color: %1; font-size: 26pt; font-weight: bold; padding: 12px;")
+        .arg(Theme::amountText().name()));
 
     // 笔数
     m_countLabel = new QLabel(this);
     m_countLabel->setAlignment(Qt::AlignCenter);
     m_countLabel->setStyleSheet(QStringLiteral("color: #8a7a66; font-size: 12pt;"));
 
+    // 分类占比饼图
+    m_chartView = new QChartView(new QChart, this);
+    m_chartView->chart()->legend()->hide();
+    m_chartView->chart()->setBackgroundRoundness(0);
+    m_chartView->chart()->setMargins(QMargins(0, 0, 0, 0));
+    m_chartView->chart()->setBackgroundBrush(Qt::NoBrush);
+    m_chartView->setRenderHint(QPainter::Antialiasing);
+    m_chartView->setStyleSheet(QStringLiteral("background: transparent;"));
+    m_chartView->setMinimumHeight(280);
+
     // 分类明细表
     m_categoryTable = new QTableWidget(this);
     m_categoryTable->setColumnCount(3);
     m_categoryTable->setHorizontalHeaderLabels(
-        {QStringLiteral("分类"), QStringLiteral("金额"), QStringLiteral("占比")});
+        {tr("分类"), tr("金额"), tr("占比")});
     m_categoryTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_categoryTable->setSelectionMode(QAbstractItemView::NoSelection);
     m_categoryTable->verticalHeader()->setVisible(false);
@@ -90,14 +114,15 @@ StatisticsDialog::StatisticsDialog(Database *db, QWidget *parent)
     m_categoryTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     m_categoryTable->setStyleSheet(QStringLiteral(
         "QTableWidget { font-size: 11pt; background: #ffffff;"
-        "                alternate-background-color: #fdf3e6; border: none; }"
-        "QHeaderView::section { background: #fff3e4; font-weight: bold;"
+        "                alternate-background-color: %1; border: none; }"
+        "QHeaderView::section { background: %1; font-weight: bold;"
         "                       font-size: 11pt; padding: 8px; border: none;"
-        "                       border-bottom: 2px solid #ffd9b0; }"));
+        "                       border-bottom: 2px solid %2; }")
+        .arg(Theme::lightBg().name(), Theme::border().name()));
 
-    // 布局：预设 → 自定义范围 → 总支出 → 笔数 → 分类明细
+    // 布局：预设 → 自定义范围 → 总支出 → 笔数 → 饼图 → 分类明细
     auto *presetRow = new QHBoxLayout;
-    presetRow->addWidget(new QLabel(QStringLiteral("时间范围"), this));
+    presetRow->addWidget(new QLabel(tr("时间范围"), this));
     presetRow->addWidget(m_preset);
     presetRow->addStretch();
 
@@ -108,10 +133,11 @@ StatisticsDialog::StatisticsDialog(Database *db, QWidget *parent)
     layout->addSpacing(8);
     layout->addWidget(m_totalLabel);
     layout->addWidget(m_countLabel);
-    layout->addSpacing(12);
-    layout->addWidget(new QLabel(QStringLiteral("分类明细"), this));
+    layout->addWidget(m_chartView);
+    layout->addSpacing(8);
+    layout->addWidget(new QLabel(tr("分类明细"), this));
     layout->addWidget(m_categoryTable);
-    resize(560, 560);
+    resize(600, 760);
 
     // 信号连接
     connect(m_preset, &QComboBox::currentIndexChanged,
@@ -125,7 +151,7 @@ StatisticsDialog::StatisticsDialog(Database *db, QWidget *parent)
 
 void StatisticsDialog::onPresetChanged()
 {
-    const bool custom = (m_preset->currentText() == QStringLiteral("自定义"));
+    const bool custom = (m_preset->currentText() == tr("自定义"));
     m_customRange->setVisible(custom);
     recalc();
 }
@@ -135,13 +161,14 @@ QString StatisticsDialog::rangeFrom() const
     const QDate today = QDate::currentDate();
     const QString preset = m_preset->currentText();
 
-    if (preset == QStringLiteral("今天"))
+    // 注意：必须与 tr() 后的文字比较，保证中英文界面都正确
+    if (preset == tr("今天"))
         return today.toString(QStringLiteral("yyyy-MM-dd"));
-    if (preset == QStringLiteral("本周"))
+    if (preset == tr("本周"))
         return today.addDays(1 - today.dayOfWeek()).toString(QStringLiteral("yyyy-MM-dd")); // 周一
-    if (preset == QStringLiteral("本月"))
+    if (preset == tr("本月"))
         return QDate(today.year(), today.month(), 1).toString(QStringLiteral("yyyy-MM-dd"));
-    if (preset == QStringLiteral("今年"))
+    if (preset == tr("今年"))
         return QDate(today.year(), 1, 1).toString(QStringLiteral("yyyy-MM-dd"));
     // 自定义
     return m_fromDate->date().toString(QStringLiteral("yyyy-MM-dd"));
@@ -149,8 +176,7 @@ QString StatisticsDialog::rangeFrom() const
 
 QString StatisticsDialog::rangeTo() const
 {
-    const QString preset = m_preset->currentText();
-    if (preset == QStringLiteral("自定义"))
+    if (m_preset->currentText() == tr("自定义"))
         return m_toDate->date().toString(QStringLiteral("yyyy-MM-dd"));
     return QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")); // 预设均统计到今天
 }
@@ -168,10 +194,30 @@ void StatisticsDialog::recalc()
     const int count = m_db->countBetween(from, to);
 
     m_totalLabel->setText(formatAmount(total));
-    m_countLabel->setText(QStringLiteral("共 %1 笔").arg(count));
+    m_countLabel->setText(tr("共 %1 笔").arg(count));
 
-    // 分类明细
     const QList<CategoryTotal> cats = m_db->categoryTotalsBetween(from, to);
+
+    // —— 饼图（分类占比）——
+    QChart *chart = m_chartView->chart();
+    chart->removeAllSeries();
+    auto *series = new QPieSeries;
+    series->setHoleSize(0.45); // 环形饼图更好看
+    for (int i = 0; i < cats.size(); ++i) {
+        const CategoryTotal &t = cats[i];
+        if (t.cents <= 0)
+            continue;
+        QPieSlice *slice = series->append(
+            Categories::emojiForTop(t.category) + QStringLiteral(" ") + t.category, t.cents);
+        const double pct = total > 0 ? t.cents * 100.0 / total : 0.0;
+        slice->setLabel(QString::number(pct, 'f', 1) + QStringLiteral("%"));
+        slice->setLabelVisible(pct >= 4.0); // 太小的占比不标字，避免重叠
+        slice->setLabelColor(QColor(QStringLiteral("#5a4a38")));
+        slice->setColor(kSliceColors[i % kSliceColors.size()]);
+    }
+    chart->addSeries(series);
+
+    // —— 分类明细表 ——
     m_categoryTable->setRowCount(cats.size());
     for (int i = 0; i < cats.size(); ++i) {
         const CategoryTotal &t = cats[i];
@@ -180,7 +226,7 @@ void StatisticsDialog::recalc()
             Categories::emojiForTop(t.category) + QStringLiteral(" ") + t.category);
         auto *amountItem = new QTableWidgetItem(formatAmount(t.cents));
         amountItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        amountItem->setForeground(QColor(QStringLiteral("#e56a10")));
+        amountItem->setForeground(Theme::amountText());
         auto *percentItem = new QTableWidgetItem(
             total > 0
                 ? QStringLiteral("%1%").arg(t.cents * 100.0 / total, 0, 'f', 1)
