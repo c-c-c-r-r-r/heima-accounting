@@ -26,6 +26,7 @@ struct CategoryTotal
 };
 
 // 负责账单数据的保存和查询
+// 说明：删除为「软删除」——只做标记，数据进回收站，可从设置页恢复
 class Database
 {
 public:
@@ -35,10 +36,16 @@ public:
     // 最近一次出错的原因
     QString lastError() const { return m_lastError; }
 
-    bool addExpense(const Expense &e);   // 新增一笔账
-    bool deleteExpense(qint64 id);       // 按编号删除一笔账
-    QList<Expense> allExpenses();        // 全部账单（按日期倒序，新的在前）
-    qint64 totalCents();                 // 总支出（单位：分）
+    bool addExpense(const Expense &e);              // 新增一笔账
+    bool updateExpense(qint64 id, const Expense &e); // 修改一笔账
+    bool deleteExpense(qint64 id);                  // 删除（进回收站）
+    bool restoreExpense(qint64 id);                 // 从回收站恢复
+    bool purgeExpense(qint64 id);                   // 彻底删除（不可恢复）
+    bool purgeAllDeleted();                         // 清空回收站
+
+    QList<Expense> allExpenses();         // 全部账单（按日期倒序，新的在前）
+    QList<Expense> deletedExpenses();     // 回收站里的账单
+    qint64 totalCents();                  // 总支出（单位：分）
 
     // —— 统计相关（date 均为 yyyy-MM-dd，含首尾两天）——
     qint64 totalCentsBetween(const QString &from, const QString &to);            // 时间段总支出
