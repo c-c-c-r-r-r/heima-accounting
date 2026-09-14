@@ -119,6 +119,12 @@
 
 备注：Mac 版编译需要在 macOS 上进行（代码本身跨平台，无需改动），后期再安排。
 
+### 6. GitHub 仓库信息
+
+- 仓库：https://github.com/c-c-c-r-r-r/heima-accounting （公开）
+- github.com 直连不稳定，推送需走本机代理：`git config http.proxy http://127.0.0.1:7897`（已在本仓库配置）
+- 提交规范：每次修改单独提交，中文提交说明，格式如 `feat: 功能描述` / `fix: 修复描述` / `style: 界面调整` / `docs: 文档更新`
+
 ### 5. 命令行编译注意事项（血泪经验，务必遵守）
 
 - 在 Git Bash 中调用 `cmd /c` 时，命令里的**引号会被 MSYS2 转换破坏**、`>nul` 会把 `nul` 当路径转换导致报错。解决：设 `MSYS2_ARG_CONV_EXCL='*'`，且命令中**不要出现引号和 >nul**（路径恰好都不含空格）。
