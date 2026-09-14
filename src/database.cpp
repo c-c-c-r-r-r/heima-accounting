@@ -14,16 +14,17 @@ namespace {
 // 所有"正常可见"查询都要带上 deleted = 0 条件
 const QString kVisible = QStringLiteral("deleted = 0");
 
-// 从查询结果读取一笔账（列顺序：id, amount_cents, category, subcategory, date, note）
+// 从查询结果读取一条记录（列顺序：id, amount_cents, type, category, subcategory, date, note）
 Expense expenseFromQuery(const QSqlQuery &query)
 {
     Expense e;
     e.id = query.value(0).toLongLong();
     e.amountCents = query.value(1).toLongLong();
-    e.category = query.value(2).toString();
-    e.subcategory = query.value(3).toString();
-    e.date = query.value(4).toString();
-    e.note = query.value(5).toString();
+    e.type = query.value(2).toInt();
+    e.category = query.value(3).toString();
+    e.subcategory = query.value(4).toString();
+    e.date = query.value(5).toString();
+    e.note = query.value(6).toString();
     return e;
 }
 
@@ -47,6 +48,7 @@ bool Database::open(const QString &filePath)
         "CREATE TABLE IF NOT EXISTS expenses ("
         " id INTEGER PRIMARY KEY AUTOINCREMENT," // 编号
         " amount_cents INTEGER NOT NULL,"       // 金额，单位：分
+        " type INTEGER NOT NULL DEFAULT 1,"     // 1 = 支出，2 = 收入
         " category TEXT NOT NULL,"              // 一级大类
         " subcategory TEXT NOT NULL,"           // 二级小类
         " date TEXT NOT NULL,"                  // 记账日期 yyyy-MM-dd
@@ -57,19 +59,27 @@ bool Database::open(const QString &filePath)
         return false;
     }
 
-    // 旧版本数据库升级：没有 deleted 列（回收站标记）就加上
+    // —— 旧版本数据库升级：缺少的列自动补上 ——
     if (!query.exec(QStringLiteral("PRAGMA table_info(expenses)"))) {
         m_lastError = query.lastError().text();
         return false;
     }
-    bool hasDeleted = false;
-    while (query.next()) {
-        if (query.value(1).toString() == QStringLiteral("deleted"))
-            hasDeleted = true;
-    }
-    if (!hasDeleted) {
+    QStringList columns;
+    while (query.next())
+        columns << query.value(1).toString();
+
+    // deleted 列（回收站标记），旧数据默认 0（可见）
+    if (!columns.contains(QStringLiteral("deleted"))) {
         if (!query.exec(QStringLiteral(
                 "ALTER TABLE expenses ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"))) {
+            m_lastError = query.lastError().text();
+            return false;
+        }
+    }
+    // type 列（收支类型），旧数据默认 1（支出）
+    if (!columns.contains(QStringLiteral("type"))) {
+        if (!query.exec(QStringLiteral(
+                "ALTER TABLE expenses ADD COLUMN type INTEGER NOT NULL DEFAULT 1"))) {
             m_lastError = query.lastError().text();
             return false;
         }
@@ -81,9 +91,10 @@ bool Database::addExpense(const Expense &e)
 {
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(
-        "INSERT INTO expenses (amount_cents, category, subcategory, date, note) "
-        "VALUES (?, ?, ?, ?, ?)"));
+        "INSERT INTO expenses (amount_cents, type, category, subcategory, date, note) "
+        "VALUES (?, ?, ?, ?, ?, ?)"));
     query.addBindValue(e.amountCents);
+    query.addBindValue(e.type);
     query.addBindValue(e.category);
     query.addBindValue(e.subcategory);
     query.addBindValue(e.date);
@@ -99,9 +110,10 @@ bool Database::updateExpense(qint64 id, const Expense &e)
 {
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(
-        "UPDATE expenses SET amount_cents = ?, category = ?, subcategory = ?,"
-        " date = ?, note = ? WHERE id = ?"));
+        "UPDATE expenses SET amount_cents = ?, type = ?, category = ?,"
+        " subcategory = ?, date = ?, note = ? WHERE id = ?"));
     query.addBindValue(e.amountCents);
+    query.addBindValue(e.type);
     query.addBindValue(e.category);
     query.addBindValue(e.subcategory);
     query.addBindValue(e.date);
@@ -167,7 +179,7 @@ QList<Expense> Database::allExpenses()
     QSqlQuery query(m_db);
     // 按日期倒序（新的在前），同一天按编号倒序；不含回收站数据
     if (!query.exec(QStringLiteral(
-            "SELECT id, amount_cents, category, subcategory, date, note "
+            "SELECT id, amount_cents, type, category, subcategory, date, note "
             "FROM expenses WHERE ") + kVisible
             + QStringLiteral(" ORDER BY date DESC, id DESC"))) {
         m_lastError = query.lastError().text();
@@ -183,7 +195,7 @@ QList<Expense> Database::deletedExpenses()
     QList<Expense> result;
     QSqlQuery query(m_db);
     if (!query.exec(QStringLiteral(
-            "SELECT id, amount_cents, category, subcategory, date, note "
+            "SELECT id, amount_cents, type, category, subcategory, date, note "
             "FROM expenses WHERE deleted = 1 ORDER BY date DESC, id DESC"))) {
         m_lastError = query.lastError().text();
         return result;
@@ -193,54 +205,75 @@ QList<Expense> Database::deletedExpenses()
     return result;
 }
 
-qint64 Database::totalCents()
+qint64 Database::totalCents(int type)
 {
     QSqlQuery query(m_db);
-    if (query.exec(QStringLiteral("SELECT COALESCE(SUM(amount_cents), 0) FROM expenses WHERE ")
-                   + kVisible)
-        && query.next()) {
-        return query.value(0).toLongLong();
+    if (type == 0) {
+        if (query.exec(QStringLiteral(
+                "SELECT COALESCE(SUM(amount_cents), 0) FROM expenses WHERE ") + kVisible)
+            && query.next())
+            return query.value(0).toLongLong();
+    } else {
+        query.prepare(QStringLiteral(
+            "SELECT COALESCE(SUM(amount_cents), 0) FROM expenses WHERE ") + kVisible
+            + QStringLiteral(" AND type = ?"));
+        query.addBindValue(type);
+        if (query.exec() && query.next())
+            return query.value(0).toLongLong();
     }
+    m_lastError = query.lastError().text();
     return 0;
 }
 
-qint64 Database::totalCentsBetween(const QString &from, const QString &to)
+qint64 Database::totalCentsBetween(const QString &from, const QString &to, int type)
 {
     QSqlQuery query(m_db);
-    query.prepare(QStringLiteral(
+    QString sql = QStringLiteral(
         "SELECT COALESCE(SUM(amount_cents), 0) FROM expenses WHERE date BETWEEN ? AND ? AND ")
-        + kVisible);
+        + kVisible;
+    if (type != 0)
+        sql += QStringLiteral(" AND type = ?");
+    query.prepare(sql);
     query.addBindValue(from);
     query.addBindValue(to);
+    if (type != 0)
+        query.addBindValue(type);
     if (query.exec() && query.next())
         return query.value(0).toLongLong();
     m_lastError = query.lastError().text();
     return 0;
 }
 
-int Database::countBetween(const QString &from, const QString &to)
+int Database::countBetween(const QString &from, const QString &to, int type)
 {
     QSqlQuery query(m_db);
-    query.prepare(QStringLiteral(
-        "SELECT COUNT(*) FROM expenses WHERE date BETWEEN ? AND ? AND ") + kVisible);
+    QString sql = QStringLiteral(
+        "SELECT COUNT(*) FROM expenses WHERE date BETWEEN ? AND ? AND ") + kVisible;
+    if (type != 0)
+        sql += QStringLiteral(" AND type = ?");
+    query.prepare(sql);
     query.addBindValue(from);
     query.addBindValue(to);
+    if (type != 0)
+        query.addBindValue(type);
     if (query.exec() && query.next())
         return query.value(0).toInt();
     m_lastError = query.lastError().text();
     return 0;
 }
 
-QList<CategoryTotal> Database::categoryTotalsBetween(const QString &from, const QString &to)
+QList<CategoryTotal> Database::categoryTotalsBetween(const QString &from, const QString &to,
+                                                     int type)
 {
     QList<CategoryTotal> result;
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(
         "SELECT category, SUM(amount_cents) AS s FROM expenses "
         "WHERE date BETWEEN ? AND ? AND ") + kVisible
-        + QStringLiteral(" GROUP BY category ORDER BY s DESC"));
+        + QStringLiteral(" AND type = ? GROUP BY category ORDER BY s DESC"));
     query.addBindValue(from);
     query.addBindValue(to);
+    query.addBindValue(type);
     if (!query.exec()) {
         m_lastError = query.lastError().text();
         return result;

@@ -1,12 +1,12 @@
 // ==========================================
-// 黑马记账 - 花销两级分类数据
+// 黑马记账 - 收支两级分类数据
 // ==========================================
 #include "categories.h"
 
 namespace {
 
-// 分类表：{图标表情, 一级大类, {二级小类...}}
-const QVector<TopCategory> kCategoryTable = {
+// 支出分类表：{名称, 图标, {二级小类...}}
+const QVector<TopCategory> kExpenseTable = {
     {QStringLiteral("餐饮饮食"), QStringLiteral("🍜"),
      {QStringLiteral("早餐"), QStringLiteral("午餐"), QStringLiteral("晚餐"),
       QStringLiteral("夜宵"), QStringLiteral("外卖"), QStringLiteral("零食饮料"),
@@ -35,34 +35,52 @@ const QVector<TopCategory> kCategoryTable = {
      {QStringLiteral("其他")}},
 };
 
-} // namespace
+// 收入分类表
+const QVector<TopCategory> kIncomeTable = {
+    {QStringLiteral("工资薪水"), QStringLiteral("💼"),
+     {QStringLiteral("基本工资"), QStringLiteral("奖金提成"), QStringLiteral("补贴报销")}},
+    {QStringLiteral("理财收益"), QStringLiteral("📈"),
+     {QStringLiteral("基金股票"), QStringLiteral("利息"), QStringLiteral("房租收入")}},
+    {QStringLiteral("红包转账"), QStringLiteral("🧧"),
+     {QStringLiteral("收红包"), QStringLiteral("转账收入"), QStringLiteral("礼金")}},
+    {QStringLiteral("兼职副业"), QStringLiteral("🛠️"),
+     {QStringLiteral("兼职"), QStringLiteral("自由职业"), QStringLiteral("二手转卖")}},
+    {QStringLiteral("其他收入"), QStringLiteral("🎁"),
+     {QStringLiteral("其他")}},
+};
 
-QVector<TopCategory> Categories::topCategories()
+const QVector<TopCategory> &tableFor(int type)
 {
-    return kCategoryTable;
+    return type == 2 ? kIncomeTable : kExpenseTable;
 }
 
-QStringList Categories::topLevels()
+} // namespace
+
+QVector<TopCategory> Categories::topCategories(int type)
+{
+    return tableFor(type);
+}
+
+QStringList Categories::topLevels(int type)
 {
     QStringList result;
-    result.reserve(kCategoryTable.size());
-    for (const auto &entry : kCategoryTable)
+    for (const auto &entry : tableFor(type))
         result << entry.name;
     return result;
 }
 
-QStringList Categories::subcategories(const QString &top)
+QStringList Categories::subcategories(const QString &top, int type)
 {
-    for (const auto &entry : kCategoryTable) {
+    for (const auto &entry : tableFor(type)) {
         if (entry.name == top)
             return entry.subs;
     }
     return {};
 }
 
-QString Categories::emojiForTop(const QString &top)
+QString Categories::emojiForTop(const QString &top, int type)
 {
-    for (const auto &entry : kCategoryTable) {
+    for (const auto &entry : tableFor(type)) {
         if (entry.name == top)
             return entry.emoji;
     }
